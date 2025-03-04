@@ -14,14 +14,18 @@ Bounce debouncer = Bounce();
 AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
 
 typedef enum {
+  STATE_INIT,
   STATE_LOOPS,
   STATE_SPEED,
   STATE_WINDING
 } state_t;
 
-state_t state = STATE_LOOPS;
+state_t state = STATE_INIT;
 unsigned int coil_loops = 130;
-unsigned int speed = 2000;
+unsigned int speed = 2500;
+
+unsigned int cur_loop = 0;
+unsigned int last_state = LOW;
 
 void
 setup()
@@ -35,16 +39,17 @@ setup()
   digitalWrite(DIR_PIN, 0);
   digitalWrite(STEP_PIN, 0);
 
-  stepper.setMaxSpeed(2000);
-  stepper.setAcceleration(20);
+  stepper.setMaxSpeed(4000);
+  stepper.setAcceleration(10);
+
+  stepper.setSpeed(speed);
 
   debouncer.interval(5);
   debouncer.attach(PIN_SENSOR, INPUT_PULLUP);
 
-}
+  last_state = debouncer.read();
 
-unsigned int cur_loop = 0;
-unsigned int last_state = LOW;
+}
 
 void state_winding()
 {
@@ -62,21 +67,47 @@ void state_winding()
   stepper.runSpeed();
 }
 
-void state_loop() {
-  Serial.println("Enter number of loops [130]:");
-  long loops = Serial.parseInt();
-  if (loops != 0)
-    coil_loops = loops;
+void state_init()
+{
+  byte s = debouncer.read();
+  if (s == LOW && s != last_state) {
+    state = STATE_LOOPS;
+  }
+  last_state = s;
+  stepper.runSpeed();
+}
+
+void state_read_loop() {
+  long loops;
+
+  do {
+	Serial.println("Enter loop count:");
+	while (Serial.available() == 0 ){
+	}
+	loops = Serial.parseInt();
+  } while (loops == 0);
+	Serial.println(loops);
+  coil_loops = loops;
+  
   state = STATE_SPEED;
 }
 
 void state_speed() {
+  
+  state = STATE_WINDING;
+  return;
+
+  do {
   Serial.println("Enter speed:");
-  long s = Serial.parseInt();
-  if (s != 0)
-    speed = s;
+	while (Serial.available() == 0 ){
+	}
+	speed = Serial.parseInt();
+  } while (speed == 0);
+
   stepper.setSpeed(speed);	
-  Serial.println("Starting winding");
+  Serial.println("Press a key to start winding");
+  while (Serial.available() == 0 ){
+  }
   state = STATE_WINDING;
 }
 
@@ -84,8 +115,11 @@ void loop()
 {
   debouncer.update();
   switch(state) {
+    case STATE_INIT:
+      state_init();
+      break;
     case STATE_LOOPS:
-      state_loop();
+      state_read_loop();
       break;
     case STATE_SPEED:
       state_speed();
